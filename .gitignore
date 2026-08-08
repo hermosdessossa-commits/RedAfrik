@@ -1,0 +1,17 @@
+# Environnement virtuel
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Secrets et variables d'environnement
+.env
+
+# Fichiers statiques collectes et medias
+staticfiles/
+media/
+
+# Base de donnees locale (tests SQLite)
+*.sqlite3
