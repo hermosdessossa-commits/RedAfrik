@@ -76,13 +76,13 @@ class UtilisateurSerializer(serializers.ModelSerializer):
             return valeur
         return getattr(obj, champ.replace("nombre_", "").replace("_", "")).count()
 
-    def get_nombre_posts(self, obj):
+    def get_nombre_posts(self, obj) -> int:
         return self._annotee_ou_comptee(obj, "nombre_posts")
 
-    def get_nombre_commentaires(self, obj):
+    def get_nombre_commentaires(self, obj) -> int:
         return self._annotee_ou_comptee(obj, "nombre_commentaires")
 
-    def get_nombre_abonnements(self, obj):
+    def get_nombre_abonnements(self, obj) -> int:
         return self._annotee_ou_comptee(obj, "nombre_abonnements")
 
 

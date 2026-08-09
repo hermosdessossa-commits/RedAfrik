@@ -15,3 +15,15 @@ media/
 
 # Base de donnees locale (tests SQLite)
 *.sqlite3
+
+# Base de donnees PostgreSQL locale du projet (dossier de données serveur)
+.pgdata/
+
+# Rapports de couverture et de tests e2e
+.coverage
+htmlcov/
+playwright-report/
+test-results/
+
+# Node.js (tests de bout en bout)
+node_modules/

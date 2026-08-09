@@ -31,6 +31,42 @@ SECRET_KEY = env(
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
+# En production, tout passe par HTTPS et les cookies sont sécurisés.
+if not DEBUG:
+    SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
+    SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
+
+# Protection contre le clickjacking
+X_FRAME_OPTIONS = "DENY"
+
+# Politique de sécurité du contenu : scripts et styles uniquement locaux
+# (aucun CDN, aucun tracker), les images externes (avatars, couvertures)
+# étant autorisées. Seule exception : cdn.jsdelivr.net, nécessaire aux
+# assets de l'interface Swagger (drf-spectacular).
+CONTENT_SECURITY_POLICY = {
+    "DIRECTIVES": {
+        "default-src": ["'self'"],
+        "script-src": ["'self'", "https://cdn.jsdelivr.net"],
+        "style-src": ["'self'", "https://cdn.jsdelivr.net"],
+        # Les attributs style="" (avatars, mises en page ponctuelles) sont
+        # autorisés, mais pas les blocs <style> ni les feuilles externes.
+        "style-src-attr": ["'unsafe-inline'"],
+        "img-src": ["'self'", "data:", "https:"],
+        "font-src": ["'self'"],
+        "connect-src": ["'self'"],
+        "frame-ancestors": ["'none'"],
+        "base-uri": ["'self'"],
+        "form-action": ["'self'"],
+    }
+}
+
 # --- Applications -------------------------------------------------------------
 DJANGO_APPS = [
     "django.contrib.admin",
@@ -44,6 +80,10 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "corsheaders",
     "rest_framework",
+    # Politique de sécurité du contenu (en-têtes HTTP CSP)
+    "csp",
+    # Documentation OpenAPI (schéma + Swagger UI)
+    "drf_spectacular",
     # Nécessaire pour la révocation (blacklist) des jetons de rafraîchissement
     "rest_framework_simplejwt.token_blacklist",
 ]
@@ -56,6 +96,7 @@ PROJECT_APPS = [
     "apps.comments",
     "apps.votes",
     "apps.moderation",
+    "frontend",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
@@ -65,6 +106,8 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     # CORS au plus tôt pour que les en-têtes soient ajoutés à toutes les réponses
     "corsheaders.middleware.CorsMiddleware",
+    # En-têtes de sécurité du contenu (CSP)
+    "csp.middleware.CSPMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -154,6 +197,20 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ),
+    # Schéma OpenAPI généré automatiquement par drf-spectacular
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # Normalisation des erreurs API (format homogène {"erreur": ...})
+    "EXCEPTION_HANDLER": "core.exceptions.redafrik_exception_handler",
+    # Limitation du débit des requêtes (protection contre le brute-force)
+    # : à adapter en production selon le trafic attendu.
+    "DEFAULT_THROTTLE_RATES": {
+        "anonymous": "60/minute",
+        "user": "300/minute",
+        # Auth : débit volontairement bas (anti brute-force sur les mots de passe)
+        "inscription": "5/minute",
+        "connexion": "10/minute",
+        "creation": "30/minute",
+    },
     "DEFAULT_RENDERER_CLASSES": (
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
@@ -162,16 +219,40 @@ REST_FRAMEWORK = {
 
 # --- JWT (djangorestframework-simplejwt) --------------------------------------------
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=2),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
+    # Jeton d'accès court : limite l'exposition en cas de fuite
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     # À chaque refresh, un nouveau jeton de rafraîchissement est émis
     "ROTATE_REFRESH_TOKENS": True,
     # et l'ancien est placé en liste noire (déconnexion possible)
     "BLACKLIST_AFTER_ROTATION": True,
-    # Met à jour date_joined/last_login à chaque connexion
+    # Met à jour last_login à chaque connexion
     "UPDATE_LAST_LOGIN": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
 # --- CORS (utile pour le futur frontend) -----------------------------------------------
+# En production, ne JAMAIS tout autoriser : lister les origines du frontend.
 CORS_ALLOW_ALL_ORIGINS = env("CORS_ALLOW_ALL_ORIGINS")
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+CORS_ALLOW_CREDENTIALS = False
+
+# --- Documentation OpenAPI (drf-spectacular) ---------------------------------------------
+SPECTACULAR_SETTINGS = {
+    "TITLE": "RedAfrik API",
+    "DESCRIPTION": (
+        "Plateforme communautaire de la diaspora africaine, inspirée de Reddit. "
+        "Communautés thématiques, publications, votes et modération."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "TAGS": [
+        {"name": "authentification", "description": "Inscription, connexion, rafraîchissement et déconnexion JWT"},
+        {"name": "utilisateurs", "description": "Profils publics et profil personnel"},
+        {"name": "communautes", "description": "Communautés thématiques et abonnements"},
+        {"name": "posts", "description": "Publications, tri et votes"},
+        {"name": "commentaires", "description": "Commentaires imbriqués et votes"},
+        {"name": "moderation", "description": "Modérateurs et signalements de contenu"},
+    ],
+}

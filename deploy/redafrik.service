@@ -1,0 +1,32 @@
+# Unité systemd pour RedAfrik (Gunicorn)
+#
+# Installation :
+#   sudo cp deploy/redafrik.service /etc/systemd/system/
+#   # adapter les chemins (User, WorkingDirectory, Environment)
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now redafrik
+
+[Unit]
+Description=RedAfrik — Plateforme communautaire (Gunicorn)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=redafrik
+Group=redafrik
+WorkingDirectory=/home/redafrik/RedAfrik
+EnvironmentFile=/home/redafrik/RedAfrik/.env
+Environment=DJANGO_SETTINGS_MODULE=config.settings
+ExecStart=/home/redafrik/RedAfrik/.venv/bin/gunicorn -c deploy/gunicorn.conf.py config.wsgi
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=3
+
+# Sécurité : fichiers ouverts et mémoire limités
+LimitNOFILE=65536
+
+# Relance après crash
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

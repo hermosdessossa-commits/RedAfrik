@@ -1,0 +1,299 @@
+/* =============================================================
+   Thème d'administration RedAfrik
+   Feuille de style attachée au back-office Django (core/templates/
+   admin/base_site.html). S'appuie sur les variables CSS officielles
+   de Django 5.2 et ajoute les composants du tableau de bord.
+   ============================================================= */
+
+/* --- Variables : palette alignée sur la plateforme ---------------- */
+:root {
+  --redafrik-accent: #ff4500;
+  --redafrik-accent-fonce: #e84300;
+  --redafrik-accent-doux: rgba(255, 69, 0, 0.12);
+  --redafrik-vert: #1a7f4b;
+  --redafrik-orange: #b26a00;
+  --redafrik-gris: #6b7280;
+
+  /* Surcharge des variables officielles Django (thème clair) */
+  --primary: #ff4500;
+  --secondary: #b33400;
+  --accent: #f5dd5d;
+  --primary-fg: #ffffff;
+
+  --header-bg: #1d1d21;
+  --header-color: #f5f5f6;
+  --header-branding-color: #ff4500;
+  --header-link-color: #f5f5f6;
+
+  --breadcrumbs-bg: #2b2b31;
+  --breadcrumbs-fg: #ffffff;
+  --breadcrumbs-link-fg: #ff8a5c;
+
+  --link-fg: #c23500;
+  --link-hover-color: #ff4500;
+  --link-selected-fg: #ff4500;
+
+  --default-button-bg: #ff4500;
+  --default-button-hover-bg: #e84300;
+  --default-button-fg: #ffffff;
+  --button-bg: #e84300;
+  --button-hover-bg: #ff4500;
+
+  --delete-button-bg: #cc3f3f;
+  --delete-button-hover-bg: #992727;
+
+  --font-family-primary: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-family-monospace: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  --darkened-bg: #f7f7f8;
+  --body-bg: #f2f3f5;
+  --hairline-color: #e4e6e8;
+  --border-color: #d8dade;
+}
+
+/* Thème sombre (basculé par le sélecteur officiel de Django) */
+html[data-theme="dark"] {
+  --header-bg: #141416;
+  --breadcrumbs-bg: #222227;
+  --redafrik-accent-doux: rgba(255, 69, 0, 0.16);
+  --darkened-bg: #1b1b1f;
+  --body-bg: #151519;
+  --hairline-color: #2e2e35;
+  --border-color: #3a3a42;
+}
+
+/* --- Habillage général ------------------------------------------- */
+#header {
+  height: 52px;
+  align-items: center;
+  border-bottom: 3px solid var(--redafrik-accent);
+}
+
+#branding h1, #site-name a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.logo-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--redafrik-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.logo-nom { color: #fff; font-size: 17px; }
+.logo-afrik { color: var(--redafrik-accent); }
+.logo-admin {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+#user-tools a { border-bottom: none; }
+#user-tools a:hover { color: var(--redafrik-accent); }
+
+.module h2, .module caption {
+  background: var(--secondary);
+  border-radius: 4px 4px 0 0;
+}
+
+.breadcrumbs {
+  border-top: 1px solid var(--redafrik-accent);
+}
+
+/* Boutons d'action en-tête (liste) */
+.object-tools a:link, .object-tools a:visited {
+  background: var(--redafrik-accent);
+  border-radius: 18px;
+  padding: 6px 14px;
+}
+.object-tools a:hover { background: var(--redafrik-accent-fonce); }
+
+/* --- Page de connexion ------------------------------------------- */
+.login #content { max-width: 380px; }
+.login #container {
+  margin-top: 7vh;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border-color);
+}
+.login #header {
+  background: var(--header-bg);
+  padding: 18px 20px;
+}
+.login #header::after { display: none; }
+.login #header #branding { float: none; text-align: center; }
+.login #site-name a { justify-content: center; }
+.login #content-main { padding: 24px; }
+.login .submit-row input {
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-weight: 600;
+}
+.login #id_username, .login #id_password {
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+.login a {
+  color: var(--redafrik-accent);
+  text-decoration: underline;
+}
+
+/* --- Tableau de bord : cartes statistiques ----------------------- */
+.dashboard-redafrik { display: block; }
+
+.alerte-signalements {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 69, 0, 0.4);
+  border-radius: 10px;
+  background: var(--redafrik-accent-doux);
+  color: var(--body-fg);
+}
+.alerte-signalements a {
+  color: var(--redafrik-accent);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.grille-statistiques {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.carte-statistique {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--body-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  text-decoration: none !important;
+}
+.carte-statistique:hover {
+  transform: translateY(-2px);
+  border-color: var(--redafrik-accent);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+}
+
+.carte-icone {
+  flex: 0 0 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--redafrik-accent);
+  background: var(--redafrik-accent-doux);
+}
+
+.carte-corps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.carte-valeur {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--body-fg);
+}
+.carte-titre {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--body-medium-color);
+}
+.carte-texte {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--body-quiet-color);
+}
+
+/* --- Tableau de bord : derniers signalements --------------------- */
+.carte-signalements-recents {
+  margin: 0 0 26px;
+  background: var(--body-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 4px 16px 14px;
+}
+.carte-signalements-recents h2 {
+  margin: 12px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.carte-signalements-recents table { width: 100%; }
+.carte-signalements-recents th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--body-quiet-color);
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+.carte-signalements-recents td {
+  padding: 8px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--hairline-color);
+  vertical-align: top;
+}
+.carte-signalements-recents tr:last-child td { border-bottom: none; }
+.champ-raison { max-width: 320px; color: var(--body-quiet-color); }
+
+.statut-statut {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.statut-en_attente { background: var(--redafrik-accent-doux); color: var(--redafrik-accent); }
+.statut-resolu { background: rgba(26, 127, 75, 0.14); color: var(--redafrik-vert); }
+.statut-rejete { background: rgba(107, 114, 128, 0.16); color: var(--redafrik-gris); }
+
+/* --- Listes d'administration -------------------------------------- */
+#changelist { border-radius: 10px; overflow: hidden; }
+#changelist .actions { border-radius: 0; }
+#result_list td, #result_list th { padding: 8px 10px; }
+
+/* Tableaux et formulaires un peu plus aérés */
+fieldset.collapse, .module {
+  border-radius: 8px;
+  overflow: hidden;
+}
+.inline-group .tabular td.original p { height: 0; overflow: hidden; }
+
+/* Responsive : le dashboard reste lisible sur petit écran */
+@media (max-width: 1024px) {
+  .grille-statistiques { grid-template-columns: repeat(2, 1fr); }
+  .carte-signalements-recents { overflow-x: auto; }
+}
+@media (max-width: 640px) {
+  .grille-statistiques { grid-template-columns: 1fr; }
+  .logo-admin { display: none; }
+}

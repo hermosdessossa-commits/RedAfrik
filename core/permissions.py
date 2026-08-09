@@ -15,7 +15,12 @@ from apps.moderation.models import Moderateur
 
 
 def role_dans_communaute(utilisateur, communaute):
-    """Retourne le rôle de l'utilisateur dans la communauté, ou None."""
+    """Retourne le rôle de l'utilisateur dans la communauté, ou None.
+
+    Un visiteur anonyme n'a jamais de rôle.
+    """
+    if not utilisateur or not utilisateur.is_authenticated:
+        return None
     try:
         return Moderateur.objects.get(
             utilisateur=utilisateur, communaute=communaute
