@@ -16,7 +16,6 @@ const etat = {
   communautes: [],
   tri: "recents",
   recherche: null,
-  pageActuelle: null,
   postEdition: null,
   statutFiltre: "en_attente",
   moderationNom: null,
@@ -126,7 +125,13 @@ async function requete(chemin, options = {}) {
   }
 
   // Jeton expiré : une seule tentative de rafraîchissement puis nouvelle requête
-  if (reponse.status === 401 && etat.jetons && etat.jetons.refresh && !opts._retry) {
+  if (
+    reponse.status === 401 &&
+    etat.jetons &&
+    etat.jetons.refresh &&
+    !opts._retry &&
+    !opts._sansRafraichissement
+  ) {
     const rafraichi = await rafraichirJetons();
     if (rafraichi) {
       opts.headers["Authorization"] = "Bearer " + etat.jetons.access;
@@ -146,22 +151,34 @@ async function requete(chemin, options = {}) {
   return donnees;
 }
 
+let rafraichissementEnCours = null;
+
 async function rafraichirJetons() {
+  // Une seule requête de refresh à la fois : avec la rotation des jetons, le
+  // premier rafraîchissement révoque l'ancien refresh, les suivants échoueraient.
+  if (rafraichissementEnCours) return rafraichissementEnCours;
+  rafraichissementEnCours = (async () => {
+    try {
+      const reponse = await fetch(API + "auth/refresh/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh: etat.jetons.refresh }),
+      });
+      if (!reponse.ok) return false;
+      const donnees = await reponse.json();
+      // ROTATE_REFRESH_TOKENS : l'API émet aussi un nouveau refresh
+      etat.jetons.access = donnees.access;
+      if (donnees.refresh) etat.jetons.refresh = donnees.refresh;
+      sauvegarderJetons();
+      return true;
+    } catch {
+      return false;
+    }
+  })();
   try {
-    const reponse = await fetch(API + "auth/refresh/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh: etat.jetons.refresh }),
-    });
-    if (!reponse.ok) return false;
-    const donnees = await reponse.json();
-    // ROTATE_REFRESH_TOKENS : l'API émet aussi un nouveau refresh
-    etat.jetons.access = donnees.access;
-    if (donnees.refresh) etat.jetons.refresh = donnees.refresh;
-    sauvegarderJetons();
-    return true;
-  } catch {
-    return false;
+    return await rafraichissementEnCours;
+  } finally {
+    rafraichissementEnCours = null;
   }
 }
 
@@ -190,17 +207,25 @@ function connecter(jetons) {
   return chargerUtilisateur();
 }
 
-function deconnecter(informer = true) {
+async function deconnecter(informer = true) {
   const refresh = etat.jetons && etat.jetons.refresh;
+  // Révocation d'abord, PENDANT que le jeton est encore en mémoire : sans
+  // en-tête Bearer, la déconnexion est refusée (401) et le refresh resterait
+  // valide 7 jours. _sansRafraichissement évite toute boucle de retry.
+  if (refresh) {
+    try {
+      await requete("auth/deconnexion/", {
+        method: "POST",
+        body: { refresh },
+        _sansRafraichissement: true,
+      });
+    } catch {
+      // Jeton déjà révoqué ou serveur injoignable : la déconnexion locale suffit.
+    }
+  }
   etat.jetons = null;
   etat.utilisateur = null;
   sauvegarderJetons();
-  if (refresh) {
-    requete("auth/deconnexion/", {
-      method: "POST",
-      body: { refresh },
-    }).catch(() => {});
-  }
   if (informer) toast("Vous êtes déconnecté.");
   rendreBarreActions();
   naviguer();
@@ -225,6 +250,11 @@ function naviguer() {
   if (hash.startsWith("/p/")) return rendrePost(decodeURIComponent(hash.slice(3)));
   if (hash.startsWith("/u/")) return rendreProfil(decodeURIComponent(hash.slice(3)));
   if (hash.startsWith("/m/")) return rendreModeration(decodeURIComponent(hash.slice(3)));
+  if (hash.startsWith("/reinitialiser-mdp/"))
+    return rendreReinitialiserMotDePasse(decodeURIComponent(hash.slice("/reinitialiser-mdp/".length)));
+  if (hash.startsWith("/verifier-email/"))
+    return rendreVerifierEmail(decodeURIComponent(hash.slice("/verifier-email/".length)));
+  if (hash === "/reinitialiser-mdp") return rendreReinitialiserMotDePasse(null);
   if (hash === "/populaire") return rendreFlux("populaire");
   if (hash === "/tendances") return rendreTendances();
   if (hash === "/abonnements") return rendreAbonnements();
@@ -309,7 +339,6 @@ function cartePost(post) {
 }
 
 async function rendreFlux(type) {
-  etat.pageActuelle = type;
   marquerLienActif();
   const conteneur = document.getElementById("contenu");
   conteneur.innerHTML = `<div class="carte chargement">Chargement…</div>`;
@@ -319,7 +348,7 @@ async function rendreFlux(type) {
     let parametres = "?page_size=10" + (etat.recherche ? "&search=" + encodeURIComponent(etat.recherche) : "");
     if (etat.tri === "populaire") parametres += "&tri=populaire";
     const donnees = await requete("posts/" + parametres);
-    const communautes = await chargerCommunautes();
+    await chargerCommunautes();
 
     const titres = { accueil: "Accueil", populaire: "Populaire" };
     conteneur.innerHTML = `
@@ -339,8 +368,62 @@ function etatVide(titre, texte) {
   return `<div class="carte etat-vide"><strong>${echapper(titre)}</strong>${echapper(texte)}</div>`;
 }
 
+/* --- Sécurité du compte : pages de réinitialisation et de vérification ------ */
+
+function rendreReinitialiserMotDePasse(jeton) {
+  const conteneur = document.getElementById("contenu");
+  if (!jeton) {
+    conteneur.innerHTML = `
+      <div class="carte entete-feed"><h1 class="titre-feed">Réinitialiser mon mot de passe</h1></div>
+      <div class="carte">
+        <form data-action="form-demande-reset" class="formulaire-compte">
+          <label>Adresse e-mail<input name="email" type="email" required autocomplete="email" placeholder="vous@exemple.com"></label>
+          <div class="modale-erreur" hidden></div>
+          <button class="bouton bouton-principal bouton-plein" type="submit">Envoyer le lien</button>
+        </form>
+        <p class="note-compte">Un lien valable 1 heure vous sera envoyé par e-mail.</p>
+      </div>`;
+    return;
+  }
+  conteneur.innerHTML = `
+    <div class="carte entete-feed"><h1 class="titre-feed">Choisir un nouveau mot de passe</h1></div>
+    <div class="carte">
+      <form data-action="form-confirmation-reset" data-jeton="${echapper(jeton)}" class="formulaire-compte">
+        <label>Nouveau mot de passe<input name="nouveau_mot_de_passe" type="password" required autocomplete="new-password"></label>
+        <label>Confirmation<input name="confirmation" type="password" required autocomplete="new-password"></label>
+        <div class="modale-erreur" hidden></div>
+        <button class="bouton bouton-principal bouton-plein" type="submit">Enregistrer</button>
+      </form>
+    </div>`;
+}
+
+function rendreVerifierEmail(jeton) {
+  const conteneur = document.getElementById("contenu");
+  conteneur.innerHTML = `<div class="carte chargement">Vérification en cours…</div>`;
+  requete("auth/verifier-email/" + encodeURIComponent(jeton) + "/", { method: "POST" })
+    .then(() => {
+      conteneur.innerHTML = `
+        <div class="carte etat-vide">
+          <strong>Adresse e-mail vérifiée</strong>
+          Merci ! Votre compte est désormais entièrement actif.
+        </div>
+        <div class="carte pagination"><a class="bouton" href="#/">← Retour à l'accueil</a></div>`;
+      if (etat.utilisateur) {
+        etat.utilisateur.email_verifie = true;
+        rendreBarreActions();
+      }
+    })
+    .catch((erreur) => {
+      conteneur.innerHTML = `
+        <div class="carte etat-vide">
+          <strong>Lien invalide ou expiré</strong>
+          ${echapper(erreur.message)}
+        </div>
+        <div class="carte pagination"><a class="bouton" href="#/">← Retour à l'accueil</a></div>`;
+    });
+}
+
 function rendreIntrouvable() {
-  etat.pageActuelle = null;
   marquerLienActif();
   const conteneur = document.getElementById("contenu");
   conteneur.innerHTML = `
@@ -743,6 +826,13 @@ function rendreBarreActions() {
     return;
   }
   const utilisateur = etat.utilisateur;
+  const badgeVerification = utilisateur.email_verifie
+    ? ""
+    : `
+    <div class="menu-avertissement">
+      <span>Adresse e-mail non vérifiée</span>
+      <button class="bouton" data-action="renvoyer-verification">Renvoyer le lien</button>
+    </div>`;
   zone.innerHTML = `
     <button class="bouton bouton-principal" data-action="nouveau-post">Créer un post</button>
     <div class="menu-utilisateur">
@@ -758,8 +848,11 @@ function rendreBarreActions() {
             <div class="karma-badge">${formaterNombre(utilisateur.karma)} karma</div>
           </div>
         </div>
+        ${badgeVerification}
         <a href="#/u/${utilisateur.id}" data-action="profil">Mon profil</a>
         <a href="#/abonnements" data-action="mes-abonnements">Mes abonnements</a>
+        <button data-action="modifier-mot-de-passe">Changer mon mot de passe</button>
+        <button class="danger" data-action="supprimer-compte">Supprimer mon compte</button>
         <button data-action="deconnexion">Déconnexion</button>
       </div>
     </div>`;
@@ -778,6 +871,8 @@ function ouvrirModale(nom) {
     "edition-post": etat.utilisateur && etat.postEdition ? modaleEditionPost() : modaleConnexion(),
     profil: etat.utilisateur ? modaleProfil() : modaleConnexion(),
     "nommer-moderateur": etat.utilisateur ? modaleNommerModerateur() : modaleConnexion(),
+    "mot-de-passe": etat.utilisateur ? modaleMotDePasse() : modaleConnexion(),
+    "supprimer-compte": etat.utilisateur ? modaleSupprimerCompte() : modaleConnexion(),
   };
   const besoinConnexion =
     (nom === "nouveau-post" || nom === "nouvelle-communaute") && !etat.utilisateur;
@@ -815,7 +910,8 @@ function modaleConnexion() {
       <div class="modale-erreur" hidden></div>
       <button class="bouton bouton-principal bouton-plein" type="submit">Se connecter</button>
     </form>
-    <p class="lien-basculer">Pas encore de compte ? <a href="#" data-action="bascule-inscription">Inscrivez-vous</a></p>`,
+    <p class="lien-basculer">Pas encore de compte ? <a href="#" data-action="bascule-inscription">Inscrivez-vous</a></p>
+    <p class="lien-basculer">Mot de passe oublié ? <a href="#/reinitialiser-mdp" data-action="aller-reinitialiser">Réinitialisez-le</a></p>`,
     "connexion"
   );
 }
@@ -929,6 +1025,8 @@ function modaleProfil() {
     "Modifier mon profil",
     `
     <form data-action="form-profil">
+      <label>Nom d'utilisateur<input name="username" required minlength="3" value="${echapper(u.username || "")}"></label>
+      <label>Adresse e-mail<input name="email" type="email" required value="${echapper(u.email || "")}"></label>
       <label>Biographie
         <textarea name="bio" rows="4" placeholder="Parlez de vous…">${echapper(u.bio || "")}</textarea>
       </label>
@@ -937,6 +1035,38 @@ function modaleProfil() {
       <button class="bouton bouton-principal bouton-plein" type="submit">Enregistrer</button>
     </form>`,
     "profil"
+  );
+}
+
+function modaleMotDePasse() {
+  return modaleEnveloppe(
+    "Changer mon mot de passe",
+    `
+    <form data-action="form-mot-de-passe">
+      <label>Mot de passe actuel<input name="ancien_mot_de_passe" type="password" required autocomplete="current-password"></label>
+      <label>Nouveau mot de passe<input name="nouveau_mot_de_passe" type="password" required autocomplete="new-password"></label>
+      <label>Confirmation<input name="confirmation" type="password" required autocomplete="new-password"></label>
+      <div class="modale-erreur" hidden></div>
+      <button class="bouton bouton-principal bouton-plein" type="submit">Enregistrer</button>
+    </form>`,
+    "mot-de-passe"
+  );
+}
+
+function modaleSupprimerCompte() {
+  return modaleEnveloppe(
+    "Supprimer mon compte",
+    `
+    <form data-action="form-supprimer-compte">
+      <div class="modale-avertissement">
+        Cette action est définitive : vos publications, commentaires et
+        communautés seront supprimés. Saisissez votre mot de passe pour confirmer.
+      </div>
+      <label>Mot de passe<input name="mot_de_passe" type="password" required autocomplete="current-password"></label>
+      <div class="modale-erreur" hidden></div>
+      <button class="bouton bouton-principal bouton-plein" type="submit">Supprimer définitivement</button>
+    </form>`,
+    "supprimer-compte"
   );
 }
 
@@ -1278,6 +1408,8 @@ async function soumettreProfil(form) {
     const profil = await requete("utilisateurs/profil/", {
       method: "PATCH",
       body: {
+        username: donnees.get("username"),
+        email: donnees.get("email"),
         bio: donnees.get("bio") || "",
         avatar_url: donnees.get("avatar_url") || "",
       },
@@ -1286,6 +1418,82 @@ async function soumettreProfil(form) {
     toast("Profil mis à jour.", "succes");
     fermerModale();
     naviguer();
+  } catch (erreur) {
+    afficherErreurFormulaire(form, erreur.message);
+  }
+}
+
+async function soumettreMotDePasse(form) {
+  const donnees = new FormData(form);
+  try {
+    await requete("utilisateurs/mdp/", {
+      method: "POST",
+      body: {
+        ancien_mot_de_passe: donnees.get("ancien_mot_de_passe"),
+        nouveau_mot_de_passe: donnees.get("nouveau_mot_de_passe"),
+        confirmation: donnees.get("confirmation"),
+      },
+    });
+    toast("Mot de passe modifié.", "succes");
+    fermerModale();
+  } catch (erreur) {
+    afficherErreurFormulaire(form, erreur.message);
+  }
+}
+
+async function soumettreSupprimerCompte(form) {
+  const donnees = new FormData(form);
+  try {
+    await requete("utilisateurs/supprimer-compte/", {
+      method: "DELETE",
+      body: { mot_de_passe: donnees.get("mot_de_passe") },
+    });
+    fermerModale();
+    toast("Votre compte a été supprimé.", "succes");
+    deconnecter(false);
+    location.hash = "#/";
+  } catch (erreur) {
+    afficherErreurFormulaire(form, erreur.message);
+  }
+}
+
+async function soumettreDemandeReset(form) {
+  const donnees = new FormData(form);
+  try {
+    await requete("auth/reinitialiser-mdp/", {
+      method: "POST",
+      body: { email: donnees.get("email") },
+    });
+    document.getElementById("contenu").innerHTML = `
+      <div class="carte etat-vide">
+        <strong>Lien envoyé</strong>
+        Si un compte existe avec cette adresse, vous avez reçu un e-mail.
+      </div>
+      <div class="carte pagination"><a class="bouton" href="#/">← Retour à l'accueil</a></div>`;
+  } catch (erreur) {
+    afficherErreurFormulaire(form, erreur.message);
+  }
+}
+
+async function soumettreConfirmationReset(form) {
+  const donnees = new FormData(form);
+  try {
+    await requete("auth/reinitialiser-mdp/confirmer/", {
+      method: "POST",
+      body: {
+        jeton: form.dataset.jeton,
+        nouveau_mot_de_passe: donnees.get("nouveau_mot_de_passe"),
+        confirmation: donnees.get("confirmation"),
+      },
+    });
+    document.getElementById("contenu").innerHTML = `
+      <div class="carte etat-vide">
+        <strong>Mot de passe réinitialisé</strong>
+        Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.
+      </div>
+      <div class="carte pagination">
+        <button class="bouton bouton-principal" data-action="connexion">Se connecter</button>
+      </div>`;
   } catch (erreur) {
     afficherErreurFormulaire(form, erreur.message);
   }
@@ -1325,6 +1533,25 @@ function gererClic(evenement) {
     case "menu-utilisateur":
       basculerMenuUtilisateur(cible);
       break;
+    case "aller-reinitialiser":
+      evenement.preventDefault();
+      fermerModale();
+      location.hash = "#/reinitialiser-mdp";
+      break;
+    case "modifier-mot-de-passe":
+      fermerMenuUtilisateur();
+      ouvrirModale("mot-de-passe");
+      break;
+    case "supprimer-compte":
+      fermerMenuUtilisateur();
+      ouvrirModale("supprimer-compte");
+      break;
+    case "renvoyer-verification":
+      fermerMenuUtilisateur();
+      requete("auth/verifier-email/", { method: "POST" })
+        .then(() => toast("Lien de vérification envoyé par e-mail.", "succes"))
+        .catch((erreur) => toast(erreur.message, "erreur"));
+      break;
     case "profil":
     case "mes-abonnements":
       fermerMenuUtilisateur();
@@ -1358,6 +1585,11 @@ function gererClic(evenement) {
     case "annuler-edition-commentaire":
       naviguer();
       break;
+    case "fermer-reponse": {
+      const formulaireReponse = cible.closest(".formulaire-reponse");
+      if (formulaireReponse) formulaireReponse.remove();
+      break;
+    }
     case "modifier-profil":
       ouvrirModale("profil");
       break;
@@ -1498,7 +1730,7 @@ async function chargerSuite(bouton) {
 
 function gererSoumission(evenement) {
   const form = evenement.target.closest("[data-action]");
-  if (!form || !["form-connexion", "form-inscription", "form-post", "form-communaute", "form-commentaire", "form-signalement", "form-edition-post", "form-edition-commentaire", "form-profil", "form-moderateur"].includes(form.dataset.action)) return;
+  if (!form || !["form-connexion", "form-inscription", "form-post", "form-communaute", "form-commentaire", "form-signalement", "form-edition-post", "form-edition-commentaire", "form-profil", "form-moderateur", "form-mot-de-passe", "form-supprimer-compte", "form-demande-reset", "form-confirmation-reset"].includes(form.dataset.action)) return;
   evenement.preventDefault();
   switch (form.dataset.action) {
     case "form-connexion":
@@ -1530,6 +1762,18 @@ function gererSoumission(evenement) {
       break;
     case "form-moderateur":
       soumettreModerateur(form);
+      break;
+    case "form-mot-de-passe":
+      soumettreMotDePasse(form);
+      break;
+    case "form-supprimer-compte":
+      soumettreSupprimerCompte(form);
+      break;
+    case "form-demande-reset":
+      soumettreDemandeReset(form);
+      break;
+    case "form-confirmation-reset":
+      soumettreConfirmationReset(form);
       break;
   }
 }

@@ -1026,9 +1026,14 @@ textarea {
   .barre-haut {
     padding: 6px 10px;
     gap: 8px;
+    flex-wrap: wrap;
+    row-gap: 10px;
   }
 
   .recherche {
+    order: 5;
+    flex: 1 1 100%;
+    min-width: 0;
     max-width: none;
   }
 
