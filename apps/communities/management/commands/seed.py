@@ -9,9 +9,9 @@ Usage :
     python manage.py seed --reset   # vide la base puis réinjecte
 """
 
-from django.core.management.base import BaseCommand, CommandError
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.core.management.base import BaseCommand, CommandError
 
 from apps.comments.models import Commentaire
 from apps.communities.models import Abonnement, Communaute

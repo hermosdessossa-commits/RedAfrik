@@ -3,6 +3,7 @@
 from django.contrib.admin import ModelAdmin
 
 from core.admin import site
+
 from .models import Commentaire
 
 

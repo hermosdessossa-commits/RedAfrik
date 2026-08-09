@@ -8,7 +8,7 @@ ni interrompues par les limites de connexion.
 Lancement : python manage.py test tests --settings=config.settings_test
 """
 
-from .settings import *  # noqa: F401,F403
+from .settings import *  # noqa: F403
 
 # Les tests s'exécutent en HTTP sans TLS : on désactive la redirection
 # HTTPS forcée (sinon chaque requête reçoit un 301) et les réglages HSTS.

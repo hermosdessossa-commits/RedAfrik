@@ -3,14 +3,16 @@
 from collections import defaultdict
 
 from django.db.models import OuterRef, Subquery
-from rest_framework import permissions, status, viewsets
+from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from apps.posts.views import _valider_valeur
 from apps.votes.models import VoteCommentaire
+from apps.votes.validation import valider_valeur_vote
 from core.permissions import EstAuteurOuModerateur
+from core.throttles import ThrottleEcriture
+
 from .models import Commentaire
 from .serializers import CommentaireSerializer
 
@@ -28,7 +30,7 @@ def construire_arbre(commentaires):
     return arbre
 
 
-class CommentaireViewSet(viewsets.ModelViewSet):
+class CommentaireViewSet(ThrottleEcriture, viewsets.ModelViewSet):
     """
     Gestion des commentaires.
 
@@ -109,7 +111,7 @@ class CommentaireViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 "Vous ne pouvez pas voter sur votre propre commentaire."
             )
-        valeur = _valider_valeur(request)
+        valeur = valider_valeur_vote(request)
         VoteCommentaire.objects.update_or_create(
             utilisateur=request.user,
             commentaire=commentaire,

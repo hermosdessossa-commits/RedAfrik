@@ -7,6 +7,7 @@ from apps.communities.models import Communaute
 from apps.posts.models import Post
 from apps.users.models import User
 from apps.users.serializers import UtilisateurCompactSerializer
+
 from .models import Moderateur, Signalement
 
 

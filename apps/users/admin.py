@@ -10,7 +10,8 @@ from .models import User
 class UserAdmin(DjangoUserAdmin):
     """Admin des utilisateurs : profil communautaire visible dans le formulaire."""
 
-    fieldsets = DjangoUserAdmin.fieldsets + (
+    fieldsets = (
+        *DjangoUserAdmin.fieldsets,
         ("Profil communautaire", {"fields": ("bio", "avatar_url", "karma")}),
     )
     list_display = ("username", "email", "karma", "date_creation", "is_staff")

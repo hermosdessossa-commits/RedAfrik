@@ -46,7 +46,7 @@ class VotePost(_BaseVote):
         unique_together = ("utilisateur", "post")
         verbose_name = "vote de post"
         verbose_name_plural = "votes de posts"
-        ordering = ["-date_vote"]
+        ordering = ("-date_vote",)
 
     def __str__(self):
         return f"{self.utilisateur} {'+' if self.valeur > 0 else '-'} post {self.post_id}"
@@ -66,7 +66,7 @@ class VoteCommentaire(_BaseVote):
         unique_together = ("utilisateur", "commentaire")
         verbose_name = "vote de commentaire"
         verbose_name_plural = "votes de commentaires"
-        ordering = ["-date_vote"]
+        ordering = ("-date_vote",)
 
     def __str__(self):
         return f"{self.utilisateur} {'+' if self.valeur > 0 else '-'} commentaire {self.commentaire_id}"

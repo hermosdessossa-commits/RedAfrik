@@ -19,6 +19,7 @@ from django.dispatch import receiver
 from apps.comments.models import Commentaire
 from apps.posts.models import Post
 from apps.users.models import User
+
 from .models import VoteCommentaire, VotePost
 
 

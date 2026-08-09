@@ -7,11 +7,13 @@ from rest_framework.response import Response
 
 from apps.moderation.models import Moderateur
 from core.permissions import EstCreateurOuAdministrateur
+from core.throttles import ThrottleEcriture
+
 from .models import Abonnement, Communaute
 from .serializers import CommunauteSerializer
 
 
-class CommunauteViewSet(viewsets.ModelViewSet):
+class CommunauteViewSet(ThrottleEcriture, viewsets.ModelViewSet):
     """
     Gestion des communautés.
 
@@ -72,7 +74,7 @@ class CommunauteViewSet(viewsets.ModelViewSet):
             ).delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-        abonnement, cree = Abonnement.objects.get_or_create(
+        _, cree = Abonnement.objects.get_or_create(
             utilisateur=request.user, communaute=communaute
         )
         if not cree:

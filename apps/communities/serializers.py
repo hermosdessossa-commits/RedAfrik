@@ -5,6 +5,8 @@ from rest_framework import serializers
 
 from apps.moderation.models import Moderateur
 from apps.users.serializers import UtilisateurCompactSerializer
+from core.fields import ImageImporteeField
+
 from .models import Abonnement, Communaute
 
 
@@ -17,6 +19,7 @@ class CommunauteSerializer(serializers.ModelSerializer):
     """
 
     createur = UtilisateurCompactSerializer(read_only=True)
+    banniere = ImageImporteeField(required=False, allow_null=True)
     nombre_abonnes = serializers.SerializerMethodField()
     nombre_posts = serializers.SerializerMethodField()
     est_abonne = serializers.SerializerMethodField()
@@ -31,6 +34,7 @@ class CommunauteSerializer(serializers.ModelSerializer):
             "nom",
             "description",
             "image_url",
+            "banniere",
             "createur",
             "date_creation",
             "nombre_abonnes",

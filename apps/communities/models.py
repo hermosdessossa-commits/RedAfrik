@@ -3,6 +3,8 @@
 from django.conf import settings
 from django.db import models
 
+from core.validateurs import valider_image_upload
+
 
 class Communaute(models.Model):
     """
@@ -20,6 +22,13 @@ class Communaute(models.Model):
     )
     description = models.TextField("description", blank=True)
     image_url = models.URLField("URL de l'image de couverture", blank=True)
+    banniere = models.ImageField(
+        "bannière",
+        upload_to="communautes/",
+        blank=True,
+        validators=[valider_image_upload],
+        help_text="Bannière importée (JPG, PNG, GIF, WebP, 5 Mo max).",
+    )
     createur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -31,7 +40,7 @@ class Communaute(models.Model):
     class Meta:
         verbose_name = "communauté"
         verbose_name_plural = "communautés"
-        ordering = ["-date_creation"]
+        ordering = ("-date_creation",)
 
     def __str__(self):
         return f"r/{self.nom}"
@@ -58,7 +67,7 @@ class Abonnement(models.Model):
         # Un utilisateur ne peut être abonné qu'une seule fois à une communauté
         unique_together = ("utilisateur", "communaute")
         verbose_name = "abonnement"
-        ordering = ["-date_abonnement"]
+        ordering = ("-date_abonnement",)
 
     def __str__(self):
         return f"{self.utilisateur} -> r/{self.communaute.nom}"

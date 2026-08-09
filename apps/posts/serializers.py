@@ -1,11 +1,12 @@
 """Serializers de l'app posts."""
 
-from typing import Optional
 
 from rest_framework import serializers
 
 from apps.communities.models import Communaute
 from apps.users.serializers import UtilisateurCompactSerializer
+from core.fields import ImageImporteeField
+
 from .models import Post
 
 
@@ -21,6 +22,7 @@ class PostSerializer(serializers.ModelSerializer):
     communaute = serializers.SlugRelatedField(
         slug_field="nom", queryset=Communaute.objects.all()
     )
+    image = ImageImporteeField(required=False, allow_null=True)
     score = serializers.IntegerField(read_only=True)
     vote_actuel = serializers.SerializerMethodField()
     nombre_commentaires = serializers.SerializerMethodField()
@@ -33,6 +35,7 @@ class PostSerializer(serializers.ModelSerializer):
             "contenu",
             "url_externe",
             "image_url",
+            "image",
             "auteur",
             "communaute",
             "score",
@@ -50,14 +53,17 @@ class PostSerializer(serializers.ModelSerializer):
         existant (ou un autre champ) ne doit pas exiger de nouveau contenu.
         """
         if self.instance is None:
-            has_contenu = any(attrs.get(champ) for champ in ("contenu", "url_externe", "image_url"))
+            has_contenu = any(
+                attrs.get(champ)
+                for champ in ("contenu", "url_externe", "image_url", "image")
+            )
             if not has_contenu:
                 raise serializers.ValidationError(
                     "Un post doit contenir au moins du texte, un lien externe ou une image."
                 )
         return attrs
 
-    def get_vote_actuel(self, obj) -> Optional[int]:
+    def get_vote_actuel(self, obj) -> int | None:
         # Valeur annotée en base par la vue (aucune requête supplémentaire)
         return getattr(obj, "vote_actuel", None)
 

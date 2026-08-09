@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = [".venv", "node_modules", "media", ".pgdata", "data"]
+
+[tool.ruff.lint]
+# Règles actives : erreurs et inutilisés (E/F), tri des imports (I),
+# idiomes Python modernes (UP), pièges courants (B), excepts aveugles
+# (BLE), simplifications (SIM) et règles maison (RUF).
+select = [
+    "E4", "E7", "E9", "F",
+    "I",
+    "UP",
+    "B", "BLE",
+    "SIM", "RUF",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Fichiers générés par Django : format aligné sur le générateur.
+"*/migrations/*" = ["E501", "RUF012"]
+# Paramètres dérivés : valeurs réécrites à partir des importations.
+"config/settings_test.py" = ["F405"]
+"config/settings_e2e.py" = ["F405"]

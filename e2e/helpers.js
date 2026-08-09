@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { expect } = require("@playwright/test");
 
 /** Connexion : renseigne le formulaire de la modale et le soumet. */
 async function seConnecter(page, username, motDePasse = "motdepasse123") {

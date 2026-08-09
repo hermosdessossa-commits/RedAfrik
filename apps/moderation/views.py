@@ -2,18 +2,20 @@
 
 from django.db import models
 from django.shortcuts import get_object_or_404
-from rest_framework import permissions, status, viewsets
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from apps.communities.models import Communaute
 from core.permissions import est_administrateur, est_moderateur
+from core.throttles import ThrottleEcriture
+
 from .models import Moderateur, Signalement
 from .serializers import ModerateurSerializer, SignalementSerializer
 
 
-class ModerateurViewSet(viewsets.ModelViewSet):
+class ModerateurViewSet(ThrottleEcriture, viewsets.ModelViewSet):
     """
     Gestion des modérateurs d'une communauté (réservée aux administrateurs).
 
@@ -26,7 +28,7 @@ class ModerateurViewSet(viewsets.ModelViewSet):
 
     queryset = Moderateur.objects.select_related("utilisateur", "communaute").all()
     serializer_class = ModerateurSerializer
-    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    http_method_names = ("get", "post", "patch", "delete", "head", "options")
 
     def _exiger_administrateur(self, communaute):
         if not est_administrateur(self.request.user, communaute):
@@ -70,7 +72,7 @@ class ModerateurViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
-class SignalementViewSet(viewsets.ModelViewSet):
+class SignalementViewSet(ThrottleEcriture, viewsets.ModelViewSet):
     """
     Signalements de contenu.
 
@@ -89,7 +91,7 @@ class SignalementViewSet(viewsets.ModelViewSet):
         "commentaire__post__communaute",
     ).all()
     serializer_class = SignalementSerializer
-    http_method_names = ["get", "post", "delete", "head", "options"]
+    http_method_names = ("get", "post", "delete", "head", "options")
 
     def _communaute_depuis_parametre(self):
         nom = self.request.query_params.get("communaute")

@@ -3,13 +3,14 @@
 from django.contrib.admin import ModelAdmin
 
 from core.admin import site
+
 from .models import Abonnement, Communaute
 
 
 class CommunauteAdmin(ModelAdmin):
     list_display = ("nom", "createur", "date_creation")
     search_fields = ("nom", "description")
-    prepopulated_fields = {"nom": ("nom",)}
+    prepopulated_fields = {"nom": ("nom",)}  # noqa: RUF012
 
 
 class AbonnementAdmin(ModelAdmin):

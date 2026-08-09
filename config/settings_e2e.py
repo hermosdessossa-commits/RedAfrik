@@ -13,6 +13,6 @@ Lancement :
 
 import os
 
-from .settings_test import *  # noqa: F401,F403
+from .settings_test import *  # noqa: F403
 
 DATABASES["default"]["NAME"] = os.environ.get("DB_NAME_E2E", "redafrik_e2e")

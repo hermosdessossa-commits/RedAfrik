@@ -1,11 +1,11 @@
 """Serializers de l'app comments, avec construction de l'arborescence."""
 
-from typing import Optional
 
 from rest_framework import serializers
 
 from apps.posts.models import Post
 from apps.users.serializers import UtilisateurCompactSerializer
+
 from .models import Commentaire
 
 
@@ -58,7 +58,7 @@ class CommentaireSerializer(serializers.ModelSerializer):
             )
         return attrs
 
-    def get_vote_actuel(self, obj) -> Optional[int]:
+    def get_vote_actuel(self, obj) -> int | None:
         return getattr(obj, "vote_actuel", None)
 
     def get_reponses(self, obj) -> list:

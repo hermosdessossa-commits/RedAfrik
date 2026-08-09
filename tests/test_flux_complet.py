@@ -13,7 +13,7 @@ from apps.communities.models import Abonnement, Communaute
 from apps.moderation.models import Moderateur, Signalement
 from apps.posts.models import Post
 from apps.users.models import User
-from apps.votes.models import VoteCommentaire, VotePost
+from apps.votes.models import VotePost
 
 
 def se_connecter(client, nom_utilisateur, mot_de_passe):
@@ -267,7 +267,7 @@ class TestPostsCommentairesEtVotes(APITestCase):
         self.assertEqual(Commentaire.objects.get(pk=racine.data["id"]).score, 1)
 
     def test_tri_populaire(self):
-        premier = self.creer_post()
+        self.creer_post()
         Post.objects.create(
             titre="Post moins populaire",
             contenu="...",
@@ -276,7 +276,7 @@ class TestPostsCommentairesEtVotes(APITestCase):
             score=5,
         )
         reponse = self.client.get(
-            f"/api/posts/?communaute=sports&tri=populaire"
+            "/api/posts/?communaute=sports&tri=populaire"
         )
         noms = [p["titre"] for p in reponse.data["results"]]
         self.assertEqual(noms[0], "Post moins populaire")

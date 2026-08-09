@@ -3,13 +3,16 @@
 from django.conf import settings
 from django.db import models
 
+from core.validateurs import valider_image_upload
+
 
 class Post(models.Model):
     """
     Publication dans une communauté.
 
-    Un post doit contenir au moins une des trois formes de contenu :
-    texte (contenu), lien externe (url_externe) ou image (image_url).
+    Un post doit contenir au moins une des quatre formes de contenu :
+    texte (contenu), lien externe (url_externe), image importée (image)
+    ou image distante (image_url).
     """
 
     titre = models.CharField("titre", max_length=300)
@@ -19,7 +22,14 @@ class Post(models.Model):
         help_text="Contenu texte du post (vide si le post est un lien ou une image).",
     )
     url_externe = models.URLField("lien externe", blank=True)
-    image_url = models.URLField("URL de l'image", blank=True)
+    image_url = models.URLField("URL de l'image distante", blank=True)
+    image = models.ImageField(
+        "image",
+        upload_to="posts/",
+        blank=True,
+        validators=[valider_image_upload],
+        help_text="Image importée depuis l'appareil (JPG, PNG, GIF, WebP, 5 Mo max).",
+    )
     auteur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -43,7 +53,7 @@ class Post(models.Model):
     class Meta:
         verbose_name = "publication"
         verbose_name_plural = "publications"
-        ordering = ["-date_creation"]
+        ordering = ("-date_creation",)
 
     def __str__(self):
         return self.titre

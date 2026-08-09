@@ -41,7 +41,7 @@ class Moderateur(models.Model):
         unique_together = ("utilisateur", "communaute")
         verbose_name = "modérateur"
         verbose_name_plural = "modérateurs"
-        ordering = ["date_nomination"]
+        ordering = ("date_nomination",)
 
     def __str__(self):
         return f"{self.utilisateur} ({self.get_role_display()}) r/{self.communaute.nom}"
@@ -95,7 +95,7 @@ class Signalement(models.Model):
     class Meta:
         verbose_name = "signalement"
         verbose_name_plural = "signalements"
-        ordering = ["-date_creation"]
+        ordering = ("-date_creation",)
 
     def __str__(self):
         cible = self.post or self.commentaire

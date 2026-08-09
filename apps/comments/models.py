@@ -44,7 +44,7 @@ class Commentaire(models.Model):
     class Meta:
         verbose_name = "commentaire"
         verbose_name_plural = "commentaires"
-        ordering = ["date_creation"]
+        ordering = ("date_creation",)
 
     def __str__(self):
         return self.contenu[:50]

@@ -1,18 +1,21 @@
 """Vues de l'app posts : CRUD, tri et votes."""
 
 from django.db.models import Count, OuterRef, Subquery
-from rest_framework import permissions, status, viewsets
+from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from core.permissions import EstAuteurOuModerateur
 from apps.votes.models import VotePost
+from apps.votes.validation import valider_valeur_vote
+from core.permissions import EstAuteurOuModerateur
+from core.throttles import ThrottleEcriture
+
 from .models import Post
 from .serializers import PostSerializer
 
 
-class PostViewSet(viewsets.ModelViewSet):
+class PostViewSet(ThrottleEcriture, viewsets.ModelViewSet):
     """
     Gestion des publications.
 
@@ -90,21 +93,10 @@ class PostViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 "Vous ne pouvez pas voter sur votre propre publication."
             )
-        valeur = _valider_valeur(request)
+        valeur = valider_valeur_vote(request)
         VotePost.objects.update_or_create(
             utilisateur=request.user, post=post, defaults={"valeur": valeur}
         )
         # Le score a été recalculé par le signal ; on le relit depuis la base.
         post.refresh_from_db()
         return Response({"valeur": valeur, "score": post.score})
-
-
-def _valider_valeur(request):
-    """Extrait et valide le champ « valeur » d'une requête de vote (1 ou -1)."""
-    try:
-        valeur = int(request.data.get("valeur"))
-    except (TypeError, ValueError):
-        raise ValidationError({"valeur": "La valeur du vote doit être 1 ou -1."})
-    if valeur not in (1, -1):
-        raise ValidationError({"valeur": "La valeur du vote doit être 1 ou -1."})
-    return valeur
