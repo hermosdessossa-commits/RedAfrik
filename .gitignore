@@ -19,6 +19,12 @@ media/
 # Base de donnees PostgreSQL locale du projet (dossier de données serveur)
 .pgdata/
 
+# Base GeoLite2 (MaxMind) : téléchargée par l'administrateur, jamais versionnée
+data/
+
+# Sauvegardes de base de donnees (scripts/sauvegarde_bd.sh)
+backups/
+
 # Rapports de couverture et de tests e2e
 .coverage
 htmlcov/

@@ -50,22 +50,20 @@ X_FRAME_OPTIONS = "DENY"
 # (aucun CDN, aucun tracker), les images externes (avatars, couvertures)
 # étant autorisées. Seule exception : cdn.jsdelivr.net, nécessaire aux
 # assets de l'interface Swagger (drf-spectacular).
-CONTENT_SECURITY_POLICY = {
-    "DIRECTIVES": {
-        "default-src": ["'self'"],
-        "script-src": ["'self'", "https://cdn.jsdelivr.net"],
-        "style-src": ["'self'", "https://cdn.jsdelivr.net"],
-        # Les attributs style="" (avatars, mises en page ponctuelles) sont
-        # autorisés, mais pas les blocs <style> ni les feuilles externes.
-        "style-src-attr": ["'unsafe-inline'"],
-        "img-src": ["'self'", "data:", "https:"],
-        "font-src": ["'self'"],
-        "connect-src": ["'self'"],
-        "frame-ancestors": ["'none'"],
-        "base-uri": ["'self'"],
-        "form-action": ["'self'"],
-    }
-}
+# Format django-csp (variables CSP_*) : loin du legacy CONTENT_SECURITY_POLICY,
+# ignoré par django-csp >= 3.8.
+CSP_DEFAULT_SRC = ["'self'"]
+CSP_SCRIPT_SRC = ["'self'", "https://cdn.jsdelivr.net"]
+CSP_STYLE_SRC = ["'self'", "https://cdn.jsdelivr.net"]
+# Les attributs style="" (avatars, mises en page ponctuelles) sont
+# autorisés, mais pas les blocs <style> ni les feuilles externes.
+CSP_STYLE_SRC_ATTR = ["'unsafe-inline'"]
+CSP_IMG_SRC = ["'self'", "data:", "https:"]
+CSP_FONT_SRC = ["'self'"]
+CSP_CONNECT_SRC = ["'self'"]
+CSP_FRAME_ANCESTORS = ["'none'"]
+CSP_BASE_URI = ["'self'"]
+CSP_FORM_ACTION = ["'self'"]
 
 # --- Applications -------------------------------------------------------------
 DJANGO_APPS = [
@@ -113,6 +111,9 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Journal des actions (IP + géolocalisation) : dernier, pour capter
+    # toutes les réponses (et les exceptions converties en 500 en amont)
+    "core.middleware.JournalisationMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -143,7 +144,8 @@ DATABASES = {
         "USER": env("DB_USER", default="redafrik"),
         "PASSWORD": env("DB_PASSWORD", default="redafrik"),
         "HOST": env("DB_HOST", default="localhost"),
-        "PORT": env("DB_PORT", default="5432"),
+        # Instance PostgreSQL locale du projet (.pgdata) : port 5433
+        "PORT": env("DB_PORT", default="5433"),
         # Durée de vie des connexions réutilisées : utile en production
         "CONN_MAX_AGE": 60,
     }
@@ -173,11 +175,83 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
+# --- E-mails transactionnels ------------------------------------------------------
+# En développement : les e-mails sont imprimés dans la console.
+# En production : SMTP configuré via le .env (EMAIL_HOST, EMAIL_PORT,
+# EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, EMAIL_USE_TLS, DEFAULT_FROM_EMAIL).
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="RedAfrik <no-reply@redafrik.app>")
+
 # --- Fichiers statiques et médias ------------------------------------------------
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# URL publique du frontend (liens embarqués dans les e-mails transactionnels)
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:8000")
+
+# --- Journal des actions (traçabilité IP + géolocalisation) --------------------
+# Chaque requête HTTP est consignée (utilisateur, méthode, chemin, statut, IP,
+# user-agent, géolocalisation). Les traces sont purgées après
+# JOURNAL_RETENTION_JOURS jours (commande « purge_journal », voir README).
+JOURNAL_ACTIONS_ENABLED = env.bool("JOURNAL_ACTIONS_ENABLED", default=True)
+JOURNAL_RETENTION_JOURS = env.int("JOURNAL_RETENTION_JOURS", default=90)
+# Seules ces adresses de proxy sont autorisées à transmettre l'IP réelle du
+# client via X-Forwarded-For (anti-spoofing).
+TRUSTED_PROXY_IPS = env.list("TRUSTED_PROXY_IPS", default=[])
+# Base GeoLite2 (MaxMind) pour la géolocalisation — facultative, non versionnée
+GEOIP_DB_PATH = env(
+    "GEOIP_DB_PATH", default=str(BASE_DIR / "data" / "GeoLite2-City.mmdb")
+)
+
+# --- Journalisation applicative (logs structurés JSON) ------------------------
+# En production, adressez LOG_FILE_PATH vers /var/log (rotation quotidienne) ;
+# en développement les lignes JSON partent sur stdout (capturables par journald).
+LOG_FILE_PATH = env("LOG_FILE_PATH", default="")
+DJANGO_LOG_LEVEL = env("DJANGO_LOG_LEVEL", default="WARNING")
+
+# Le handler « fichier » (rotation quotidienne, rotation 14 jours) n'existe
+# qu'en production, quand LOG_FILE_PATH pointe vers un emplacement valide.
+_HANDLERS = {"console": {"class": "logging.StreamHandler", "formatter": "json"}}
+if LOG_FILE_PATH:
+    _HANDLERS["fichier"] = {
+        "class": "logging.handlers.TimedRotatingFileHandler",
+        "filename": LOG_FILE_PATH,
+        "when": "midnight",
+        "backupCount": 14,
+        "formatter": "json",
+    }
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {"()": "core.logging.FormateurJson"},
+    },
+    "handlers": _HANDLERS,
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {
+        "django": {
+            "handlers": list(_HANDLERS),
+            "level": DJANGO_LOG_LEVEL,
+            "propagate": False,
+        },
+        "redafrik": {
+            "handlers": list(_HANDLERS),
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

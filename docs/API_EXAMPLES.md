@@ -64,6 +64,31 @@ curl -X POST http://localhost:8000/api/auth/deconnexion/ \
   -d '{"refresh": "eyJhbGciOi..."}'
 ```
 
+### Vérification de l'adresse e-mail
+
+```bash
+# Valider le lien reçu par e-mail (sans authentification)
+curl -X POST http://localhost:8000/api/auth/verifier-email/<jeton>/
+
+# Renvoyer un nouveau lien (utilisateur connecté)
+curl -X POST http://localhost:8000/api/auth/verifier-email/ \
+  -H "Authorization: Bearer <access_token>"
+```
+
+### Réinitialisation du mot de passe
+
+```bash
+# Demander un lien (réponse neutre : ne révèle pas l'existence du compte)
+curl -X POST http://localhost:8000/api/auth/reinitialiser-mdp/ \
+  -H "Content-Type: application/json" \
+  -d '{"email": "vous@exemple.com"}'
+
+# Appliquer le nouveau mot de passe avec le jeton reçu par e-mail
+curl -X POST http://localhost:8000/api/auth/reinitialiser-mdp/confirmer/ \
+  -H "Content-Type: application/json" \
+  -d '{"jeton": "<jeton>", "nouveau_mot_de_passe": "NouveauMdp123!", "confirmation": "NouveauMdp123!"}'
+```
+
 ---
 
 ## 2. Utilisateurs
@@ -82,9 +107,24 @@ curl -X PATCH http://localhost:8000/api/utilisateurs/profil/ \
 # Classement public des utilisateurs par karma
 curl http://localhost:8000/api/utilisateurs/
 
+# Profil public d'un utilisateur (id numérique)
+curl http://localhost:8000/api/utilisateurs/42/
+
 # Communautés suivies par l'utilisateur connecté
 curl http://localhost:8000/api/utilisateurs/abonnements/ \
   -H "Authorization: Bearer <access_token>"
+
+# Changer son mot de passe (ancien mot de passe requis)
+curl -X POST http://localhost:8000/api/utilisateurs/mdp/ \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"ancien_mot_de_passe": "AncienMdp123!", "nouveau_mot_de_passe": "NouveauMdp123!", "confirmation": "NouveauMdp123!"}'
+
+# Supprimer définitivement son compte (mot de passe requis)
+curl -X DELETE http://localhost:8000/api/utilisateurs/supprimer-compte/ \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"mot_de_passe": "NouveauMdp123!"}'
 ```
 
 ---
@@ -156,6 +196,9 @@ curl "http://localhost:8000/api/posts/?communaute=tech-afrique"
 
 # Feed trié par popularité (score)
 curl "http://localhost:8000/api/posts/?tri=populaire"
+
+# Posts d'un auteur donné (page profil)
+curl "http://localhost:8000/api/posts/?auteur=42"
 
 # Recherche dans les titres et contenus
 curl "http://localhost:8000/api/posts/?search=IA"
@@ -278,6 +321,10 @@ curl -X POST http://localhost:8000/api/signalements/3/traiter/ \
   -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
   -d '{"statut": "resolu"}'
+
+# Supprimer un signalement (modérateurs requis)
+curl -X DELETE http://localhost:8000/api/signalements/3/ \
+  -H "Authorization: Bearer <access_token>"
 ```
 
 ---

@@ -40,6 +40,9 @@ jobs:
           sed -i "s/^DB_PASSWORD=.*/DB_PASSWORD=redafrik/" .env
           python manage.py check
 
+      - name: Vérifier les migrations (aucune en attente)
+        run: python manage.py makemigrations --check --dry-run
+
       - name: Migrations
         run: python manage.py migrate
 
@@ -50,3 +53,9 @@ jobs:
         run: |
           coverage run --source=apps,config,core manage.py test tests --settings=config.settings_test
           coverage report --fail-under=65
+
+      - name: Lint (ruff)
+        run: ruff check apps core config tests
+
+      - name: Audit des dépendances (pip-audit)
+        run: pip-audit -r requirements.txt

@@ -8,16 +8,54 @@ core/static/admin/css/redafrik_admin.css).
 
 from django.contrib import admin
 
+from .models import JournalAction
+
+
+class JournalActionAdmin(admin.ModelAdmin):
+    """Consultation du journal des actions (lecture et purge uniquement)."""
+
+    list_display = (
+        "date_creation",
+        "utilisateur",
+        "methode",
+        "chemin",
+        "statut",
+        "adresse_ip",
+        "pays",
+    )
+    list_filter = ("methode", "statut", "date_creation")
+    search_fields = ("adresse_ip", "chemin", "utilisateur__username")
+    date_hierarchy = "date_creation"
+    list_select_related = ("utilisateur",)
+    readonly_fields = (
+        "utilisateur",
+        "methode",
+        "chemin",
+        "statut",
+        "adresse_ip",
+        "agent",
+        "geolocalisation",
+        "date_creation",
+    )
+
+    def pays(self, objet):
+        if not objet.geolocalisation:
+            return "—"
+        return objet.geolocalisation.get("pays")
+
+    pays.short_description = "pays"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
 
 class RedAfrikAdminSite(admin.AdminSite):
     """Site d'administration RedAfrik : ajoute les stats au tableau de bord."""
 
     index_template = "admin/index.html"
-
-    def register(self, *args, **kwargs):
-        if self is None:
-            print("DEBUG: register appelé sur None", file=__import__("sys").stderr)
-        return super().register(*args, **kwargs)
 
     def each_context(self, request):
         contexte = super().each_context(request)
@@ -93,6 +131,13 @@ class RedAfrikAdminSite(admin.AdminSite):
                 "icone": "abonnements",
                 "texte": "Couples utilisateur ↔ communauté.",
             },
+            {
+                "titre": "Actions journalisées",
+                "valeur": JournalAction.objects.count(),
+                "icone": "actions",
+                "lien": "admin:core_journalaction_changelist",
+                "texte": "Trace IP + géolocalisation (rétention 90 jours).",
+            },
         ]
 
         extra["signalements_recents"] = (
@@ -108,3 +153,5 @@ class RedAfrikAdminSite(admin.AdminSite):
 
 # Instance partagée : les AdminClass enregistrent dessus (voir apps/*/admin.py)
 site = RedAfrikAdminSite(name="redafrik")
+
+site.register(JournalAction, JournalActionAdmin)

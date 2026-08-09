@@ -26,5 +26,12 @@ Pillow>=10.0,<12.0
 # Serveur WSGI de production
 gunicorn>=22,<24
 
+# Géolocalisation des adresses IP (base GeoLite2 MaxMind, facultative)
+geoip2>=4.6,<5.0
+
 # Mesure de couverture des tests (dev et CI)
 coverage>=7,<8
+
+# Outils qualité (lint et audit de dépendances, dev et CI)
+ruff>=0.6,<1.0
+pip-audit>=2.7,<3.0

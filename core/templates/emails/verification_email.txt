@@ -1,0 +1,11 @@
+Bonjour {{ utilisateur.username }},
+
+Bienvenue sur RedAfrik. Pour activer votre compte, cliquez sur le lien
+ci-dessous (valable 24 heures) :
+
+{{ lien }}
+
+Si vous n'avez pas créé de compte sur RedAfrik, ignorez simplement cet
+e-mail.
+
+L'équipe RedAfrik

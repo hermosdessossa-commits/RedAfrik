@@ -57,8 +57,10 @@ python manage.py migrate
 python manage.py test tests --settings=config.settings_test
 ```
 
-29 tests d'intégration : authentification, communautés, publications,
-commentaires, votes (scores et karma), modération et cas limites.
+66 tests d'intégration : authentification, communautés, publications,
+commentaires, votes (scores et karma), modération, sécurité du compte
+(anti force brute, vérification d'e-mail, réinitialisation), journal des
+actions (IP + géolocalisation) et uploads d'images.
 
 ## Structure
 
@@ -81,15 +83,60 @@ config/         Settings (dont settings_test.py) et routage global
 
 | Domaine | Routes |
 |---|---|
-| Auth | `POST auth/inscription/`, `POST auth/connexion/`, `POST auth/refresh/`, `POST auth/deconnexion/` |
-| Utilisateurs | `GET utilisateurs/`, `GET utilisateurs/{id}/`, `GET utilisateurs/moi/`, `GET/PATCH utilisateurs/profil/`, `GET utilisateurs/abonnements/` |
+| Auth | `POST auth/inscription/`, `POST auth/connexion/`, `POST auth/refresh/`, `POST auth/deconnexion/`, `POST auth/verifier-email/`, `POST auth/verifier-email/{jeton}/`, `POST auth/reinitialiser-mdp/`, `POST auth/reinitialiser-mdp/confirmer/` |
+| Utilisateurs | `GET utilisateurs/`, `GET utilisateurs/{id}/`, `GET utilisateurs/moi/`, `GET/PATCH utilisateurs/profil/`, `POST utilisateurs/mdp/`, `DELETE utilisateurs/supprimer-compte/`, `GET utilisateurs/abonnements/` |
 | Communautés | `GET/POST communautes/`, `GET/PATCH/DELETE communautes/{nom}/`, `POST/DELETE communautes/{nom}/abonner/`, `GET communautes/tendances/` |
 | Publications | `GET/POST posts/` (`?communaute=`, `?auteur=`, `?tri=populaire`, `?search=`), `GET/PATCH/DELETE posts/{id}/`, `POST/DELETE posts/{id}/vote/` |
 | Commentaires | `GET/POST commentaires/` (`?post=`), `PATCH/DELETE commentaires/{id}/`, `POST/DELETE commentaires/{id}/vote/` |
-| Modération | `GET/POST moderateurs/`, `PATCH/DELETE moderateurs/{id}/`, `POST signalements/`, `GET signalements/?communaute=`, `POST signalements/{id}/traiter/` |
+| Modération | `GET/POST moderateurs/`, `PATCH/DELETE moderateurs/{id}/`, `POST signalements/`, `GET signalements/?communaute=`, `POST signalements/{id}/traiter/`, `DELETE signalements/{id}/` |
+| Administration | `GET actions/`, `GET sante/` |
 
 L'index complet est renvoyé par `GET /api/` et les exemples par dossier
 `docs/API_EXAMPLES.md`.
+
+## Journal des actions (IP + géolocalisation)
+
+Chaque requête HTTP est consignée en base (`JournalAction`) : utilisateur
+(jeton JWT), méthode, chemin, statut, adresse IP, user-agent et, si la base
+est présente, géolocalisation (pays, région, ville, coordonnées).
+
+- **Consultation** : `GET /api/actions/` (staff uniquement — l'IP est
+  masquée pour les non-superutilisateurs), filtres `?utilisateur=`,
+  `?methode=`, `?chemin=`, `?du=`, `?au=` ; le back-office est accessible
+  dans l'admin.
+- **Sécurité** : l'IP n'est déduite de `X-Forwarded-For` que si le client
+  direct figure dans `TRUSTED_PROXY_IPS` (anti-spoofing).
+- **Géolocalisation** : base [GeoLite2 City](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data)
+  (compte MaxMind gratuit), placée au chemin `GEOIP_DB_PATH`
+  (défaut `data/GeoLite2-City.mmdb`, hors git). Sans base, le champ vaut
+  `null` ; IP privées et locales jamais géolocalisées.
+- **Conformité** : les traces sont conservées `JOURNAL_RETENTION_JOURS`
+  jours (90 par défaut) puis purgées :
+
+  ```bash
+  python manage.py purge_journal          # rétention configurée
+  python manage.py purge_journal --jours=30  # rétention forcée
+  ```
+
+  Planifiez cette purge quotidiennement en production (cron/systemd) ;
+  annoncez la collecte dans la politique de confidentialité (droit
+  d'accès et d'effacement — la suppression d'un compte supprime ses liens
+  dans le journal, `SET_NULL`).
+
+### Logs structurés
+
+Les logs applicatifs sont émis au format JSON (une ligne par événement,
+avec IP/utilisateur/chemin sur les actions). En développement ils partent
+sur stdout ; en production, pointez `LOG_FILE_PATH` vers un fichier
+(rotation quotidienne, 14 copies) ou dirigez stdout vers journald.
+
+### Sauvegardes de la base
+
+```bash
+scripts/sauvegarde_bd.sh   # pg_dump compressé dans backups/ (30 jours)
+```
+
+Cron suggéré : `30 2 * * * /chemin/redafrik/scripts/sauvegarde_bd.sh`.
 
 ## Déploiement
 
