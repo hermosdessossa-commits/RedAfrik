@@ -101,6 +101,8 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Sert les fichiers statiques en production (gunicorn sans nginx)
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     # CORS au plus tôt pour que les en-têtes soient ajoutés à toutes les réponses
     "corsheaders.middleware.CorsMiddleware",
@@ -121,7 +123,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -137,19 +139,25 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 # --- Base de données PostgreSQL -----------------------------------------------
-DATABASES = {
-    "default": {
-        "ENGINE": env("DB_ENGINE", default="django.db.backends.postgresql"),
-        "NAME": env("DB_NAME", default="redafrik"),
-        "USER": env("DB_USER", default="redafrik"),
-        "PASSWORD": env("DB_PASSWORD", default="redafrik"),
-        "HOST": env("DB_HOST", default="localhost"),
-        # Instance PostgreSQL locale du projet (.pgdata) : port 5433
-        "PORT": env("DB_PORT", default="5433"),
-        # Durée de vie des connexions réutilisées : utile en production
-        "CONN_MAX_AGE": 60,
+# En production (Render/Neon, ...) : fournir DATABASE_URL (postgres://...) ;
+# en local, les variables DB_* pointent vers l'instance du projet (.pgdata).
+_database_url = env.str("DATABASE_URL", default="")
+if _database_url:
+    DATABASES = {"default": env.db("DATABASE_URL")}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": env("DB_ENGINE", default="django.db.backends.postgresql"),
+            "NAME": env("DB_NAME", default="redafrik"),
+            "USER": env("DB_USER", default="redafrik"),
+            "PASSWORD": env("DB_PASSWORD", default="redafrik"),
+            "HOST": env("DB_HOST", default="localhost"),
+            # Instance PostgreSQL locale du projet (.pgdata) : port 5433
+            "PORT": env("DB_PORT", default="5433"),
+            # Durée de vie des connexions réutilisées : utile en production
+            "CONN_MAX_AGE": 60,
+        }
     }
-}
 
 # Modèle utilisateur personnalisé (voir apps/users/models.py)
 AUTH_USER_MODEL = "users.User"
@@ -194,7 +202,17 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="RedAfrik <no-reply@redaf
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
+
+# Whitenoise : compression et versions à empreinte en production (collectstatic)
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # URL publique du frontend (liens embarqués dans les e-mails transactionnels)
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:8000")
@@ -275,8 +293,14 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     # Normalisation des erreurs API (format homogène {"erreur": ...})
     "EXCEPTION_HANDLER": "core.exceptions.redafrik_exception_handler",
-    # Limitation du débit des requêtes (protection contre le brute-force)
-    # : à adapter en production selon le trafic attendu.
+    # Limitation du débit des requêtes (protection contre le brute-force
+    # et les lectures massives). AnonRateThrottle/UserRateThrottle s'appliquent
+    # à tous les endpoints ; les écritures, l'inscription et la connexion
+    # ont en plus leurs scopes dédiés ci-dessous.
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ),
     "DEFAULT_THROTTLE_RATES": {
         "anonymous": "60/minute",
         "user": "300/minute",
@@ -287,7 +311,13 @@ REST_FRAMEWORK = {
     },
     "DEFAULT_RENDERER_CLASSES": (
         "rest_framework.renderers.JSONRenderer",
-        "rest_framework.renderers.BrowsableAPIRenderer",
+        # Interface browsable : développement uniquement (surface d'attaque
+        # réduite en production et HTML non désiré pour les consommateurs API)
+        *(
+            ("rest_framework.renderers.BrowsableAPIRenderer",)
+            if DEBUG
+            else ()
+        ),
     ),
 }
 

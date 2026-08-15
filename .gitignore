@@ -33,3 +33,6 @@ test-results/
 
 # Node.js (tests de bout en bout)
 node_modules/
+
+# Sortie de build du frontend Vercel (scripts/vercel_build.sh)
+public/

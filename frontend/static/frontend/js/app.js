@@ -6,7 +6,7 @@
 
 "use strict";
 
-const API = "/api/";
+const API = window.REDAFRIK_API || "/api/";
 
 /* --- État global --------------------------------------------------------- */
 
@@ -51,9 +51,24 @@ function echapper(valeur) {
   }[caractere]));
 }
 
+function urlSure(valeur) {
+  // N'autorise que les URL http(s) : une valeur « javascript:… » ou un
+  // schéma inconnu ne doit jamais devenir un href ou un src exécutable.
+  const url = String(valeur ?? "").trim();
+  if (!url) return "";
+  try {
+    const objet = new URL(url, window.location.origin);
+    return ["http:", "https:"].includes(objet.protocol) ? url : "";
+  } catch {
+    return "";
+  }
+}
+
 function tempsRelatif(iso) {
   if (!iso) return "";
-  const delta = (Date.now() - new Date(iso).getTime()) / 1000;
+  const instant = new Date(iso).getTime();
+  if (Number.isNaN(instant)) return "";
+  const delta = (Date.now() - instant) / 1000;
   if (delta < 60) return "à l'instant";
   const minutes = Math.floor(delta / 60);
   if (minutes < 60) return minutes + " min";
@@ -133,10 +148,17 @@ async function requete(chemin, options = {}) {
     !opts._sansRafraichissement
   ) {
     const rafraichi = await rafraichirJetons();
-    if (rafraichi) {
+    if (rafraichi === true) {
       opts.headers["Authorization"] = "Bearer " + etat.jetons.access;
       opts._retry = true;
       return requete(chemin, opts);
+    }
+    if (rafraichi === "reseau") {
+      // Panne réseau pendant le refresh : la session n'est pas forcément
+      // expirée, on ne la sacrifie pas — on remonte l'indisponibilité.
+      return Promise.reject(
+        new ErreurApi("Serveur indisponible. Vérifiez votre connexion et réessayez.", 0, {})
+      );
     }
     deconnecter(false);
     return Promise.reject(
@@ -158,22 +180,25 @@ async function rafraichirJetons() {
   // premier rafraîchissement révoque l'ancien refresh, les suivants échoueraient.
   if (rafraichissementEnCours) return rafraichissementEnCours;
   rafraichissementEnCours = (async () => {
+    let reponse;
     try {
-      const reponse = await fetch(API + "auth/refresh/", {
+      reponse = await fetch(API + "auth/refresh/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh: etat.jetons.refresh }),
       });
-      if (!reponse.ok) return false;
-      const donnees = await reponse.json();
-      // ROTATE_REFRESH_TOKENS : l'API émet aussi un nouveau refresh
-      etat.jetons.access = donnees.access;
-      if (donnees.refresh) etat.jetons.refresh = donnees.refresh;
-      sauvegarderJetons();
-      return true;
     } catch {
-      return false;
+      // Panne réseau : distinct d'un refresh refusé (session réellement
+      // expirée) — la session reste valable, on réessaiera plus tard.
+      return "reseau";
     }
+    if (!reponse.ok) return false;
+    const donnees = await reponse.json();
+    // ROTATE_REFRESH_TOKENS : l'API émet aussi un nouveau refresh
+    etat.jetons.access = donnees.access;
+    if (donnees.refresh) etat.jetons.refresh = donnees.refresh;
+    sauvegarderJetons();
+    return true;
   })();
   try {
     return await rafraichissementEnCours;
@@ -292,12 +317,14 @@ function cartePost(post) {
     post.contenu
       ? `<div class="post-contenu">${echapper(post.contenu)}</div>`
       : "";
-  const image = post.image_url
-    ? `<img class="post-image" src="${echapper(post.image_url)}" alt="${echapper(post.titre)}" loading="lazy">`
+  const imageUrl = urlSure(post.image_url);
+  const image = imageUrl
+    ? `<img class="post-image" src="${echapper(imageUrl)}" alt="${echapper(post.titre)}" loading="lazy">`
     : "";
-  const lien = post.url_externe
-    ? `<a class="post-lien" href="${echapper(post.url_externe)}" target="_blank" rel="noopener noreferrer">
-         ${echapper(post.url_externe)}</a>`
+  const lienExterne = urlSure(post.url_externe);
+  const lien = lienExterne
+    ? `<a class="post-lien" href="${echapper(lienExterne)}" target="_blank" rel="noopener noreferrer">
+         ${echapper(lienExterne)}</a>`
     : "";
 
   return `
@@ -402,6 +429,9 @@ function rendreVerifierEmail(jeton) {
   conteneur.innerHTML = `<div class="carte chargement">Vérification en cours…</div>`;
   requete("auth/verifier-email/" + encodeURIComponent(jeton) + "/", { method: "POST" })
     .then(() => {
+      // Le jeton est à usage unique : on l'efface de l'URL (un rechargement
+      // ne doit pas le réutiliser).
+      history.replaceState(null, "", "#/");
       conteneur.innerHTML = `
         <div class="carte etat-vide">
           <strong>Adresse e-mail vérifiée</strong>
@@ -414,6 +444,7 @@ function rendreVerifierEmail(jeton) {
       }
     })
     .catch((erreur) => {
+      history.replaceState(null, "", "#/");
       conteneur.innerHTML = `
         <div class="carte etat-vide">
           <strong>Lien invalide ou expiré</strong>
@@ -693,7 +724,7 @@ function carteSignalement(s) {
   <article class="carte signalement" data-id="${s.id}">
     <div class="post-corps">
       <div class="post-meta">
-        <span class="pastille-statut ${s.statut}">${libelles[s.statut]}</span>
+        <span class="pastille-statut ${s.statut}">${libelles[s.statut] || echapper(s.statut)}</span>
         <span>•</span>
         <span>${typeCible} #${idCible} signalé par u/${echapper(s.utilisateur.username)}</span>
         <span>•</span>
@@ -1074,16 +1105,20 @@ function modaleSupprimerCompte() {
 
 async function voter(type, id, valeur) {
   if (!exigerConnexion()) return;
+  // Références DOM capturées AVANT la requête : si l'utilisateur navigue
+  // pendant l'appel, les éléments n'existent plus et on n'écrase rien.
+  const carte = document.querySelector(
+    `.commentaire[data-id="${id}"] .score, .post[data-id="${id}"] .score`
+  );
+  const zone = document.querySelector(
+    `[data-action="vote"][data-type="${type}"][data-id="${id}"]`
+  )?.closest(".rail-vote, .commentaire-rail");
   try {
     const donnees = await requete(type + "s/" + id + "/vote/", {
       method: "POST",
       body: { valeur },
     });
-    const carte = document.querySelector(
-      `.commentaire[data-id="${id}"] .score, .post[data-id="${id}"] .score`
-    );
     if (carte) carte.textContent = formaterNombre(donnees.score);
-    const zone = document.querySelector(`[data-action="vote"][data-type="${type}"][data-id="${id}"]`).closest(".rail-vote, .commentaire-rail");
     if (zone) {
       zone.querySelectorAll(".bouton-vote").forEach((b) => b.classList.remove("actif"));
       const actif = zone.querySelector(`[data-valeur="${valeur}"]`);
@@ -1709,8 +1744,20 @@ function basculerTypePost(bouton) {
 async function chargerSuite(bouton) {
   bouton.disabled = true;
   bouton.textContent = "Chargement…";
+  // L'URL « next » de l'API est absolue : on n'en garde que chemin + query,
+  // quelle que soit la forme du hôte (proxy, changement de chemin).
+  let chemin;
   try {
-    const donnees = await requete(bouton.dataset.suite.split("/api/")[1]);
+    const url = new URL(bouton.dataset.suite, window.location.origin);
+    chemin = url.pathname + url.search;
+  } catch {
+    bouton.disabled = false;
+    bouton.textContent = "Charger plus";
+    toast("Impossible de continuer la liste.", "erreur");
+    return;
+  }
+  try {
+    const donnees = await requete(chemin);
     const cartes = donnees.results.map(cartePost).join("");
     const zone = bouton.closest("div");
     zone.insertAdjacentHTML("beforebegin", cartes);

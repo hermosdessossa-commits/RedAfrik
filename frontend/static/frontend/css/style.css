@@ -226,6 +226,16 @@ textarea {
   color: var(--accent);
 }
 
+/* Logo image (favicon/logo RedAfrik) : fond blanc à raccourcis arrondis,
+   le PNG d'origine ayant un fond blanc, quel que soit le thème. */
+.logo-img {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: #fff;
+  object-fit: cover;
+}
+
 .recherche {
   position: relative;
   flex: 1;
